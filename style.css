@@ -84,7 +84,16 @@ h1 {
 }
 
 .entete { display: flex; justify-content: space-between; color: var(--discret); }
-#essais { letter-spacing: 0.2em; }
+#progression { display: flex; align-items: center; gap: 6px; }
+.pastille {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+}
+.pastille.faite { background: var(--c); }
+.pastille.rate { background: rgba(0, 0, 0, 0.6); }
+.pastille.actuelle { outline: 2px solid #fff; outline-offset: 2px; }
 
 #theme { font-size: clamp(1.5rem, 5vw, 2.2rem); margin: 12px 0 16px; }
 

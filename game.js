@@ -1,20 +1,26 @@
-// Krillon — trouvez les mots les plus originaux pour plonger au fond des abysses.
+// Abysse — la plongée quotidienne : 7 questions, les mêmes pour tout le monde.
+// Une seule réponse par question : plus elle est rare, plus on descend profond.
 
-const MANCHES = 5;
-const DUREE_MANCHE = 30; // secondes d'oxygène par manche
-const ESSAIS = 3; // mots acceptés par manche
-const PENALITE = 2; // secondes perdues pour un mot inconnu
-const METRES = [15, 60, 180, 450, 900]; // gain par niveau de rareté
-const RARETE = ["Banal", "Classique", "Original", "Rare", "Légendaire"];
+const QUESTIONS = 7;
+const DUREE = 20; // secondes pour répondre à chaque question
+const POINTS = [4, 12, 32, 64, 100]; // points par niveau de rareté
+const METRES_PAR_POINT = 10;
+const MAX_POINTS = QUESTIONS * POINTS[POINTS.length - 1]; // 700 : plongée parfaite
+const MAX_PROFONDEUR = MAX_POINTS * METRES_PAR_POINT; // 7 000 m
+const RARETE = ["Plancton", "Sardine", "Espadon", "Calmar géant", "Un sur un million"];
+const CARRES = ["⬜", "🟩", "🟦", "🟪", "🟨"];
+const CARRE_RATE = "⬛";
 
 const ZONES = [
   { min: 0, nom: "Zone épipélagique", desc: "La surface, baignée de lumière." },
   { min: 200, nom: "Zone mésopélagique", desc: "La zone crépusculaire." },
   { min: 1000, nom: "Zone bathypélagique", desc: "La zone de minuit, où la lumière ne vient plus." },
   { min: 4000, nom: "Zone abyssopélagique", desc: "Les abysses, glacées et silencieuses." },
-  { min: 6000, nom: "Zone hadale", desc: "Les fosses océaniques." },
-  { min: 10935, nom: "Au-delà de la fosse des Mariannes", desc: "Plus profond que n'importe quel humain." },
+  { min: 6000, nom: "Zone hadale", desc: "Le fond des fosses océaniques." },
 ];
+
+const CLE_PLONGEE = "abysse.plongee";
+const CLE_RECORD = "abysse.record";
 
 function normaliser(mot) {
   return mot
@@ -56,18 +62,52 @@ function zonePour(profondeur) {
   return [...ZONES].reverse().find((z) => profondeur >= z.min);
 }
 
-function melanger(tableau) {
+// --- Tirage quotidien : même graine pour tout le monde un jour donné ---
+
+function hasher(texte) {
+  let h = 2166136261;
+  for (const c of texte) {
+    h ^= c.charCodeAt(0);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function alea(graine) {
+  let a = graine;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function melanger(tableau, hasard = Math.random) {
   const t = [...tableau];
   for (let i = t.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(hasard() * (i + 1));
     [t[i], t[j]] = [t[j], t[i]];
   }
   return t;
 }
 
+function dateDuJour() {
+  const d = new Date();
+  const deux = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${deux(d.getMonth() + 1)}-${deux(d.getDate())}`;
+}
+
+function ordreDuJour(jour) {
+  const indices = THEMES.map((_, i) => i);
+  return melanger(indices, alea(hasher(`abysse-${jour}`))).slice(0, QUESTIONS);
+}
+
+// --- Sauvegarde locale ---
+
 function lireRecord() {
   try {
-    return Number(localStorage.getItem("krillon.record")) || 0;
+    return Number(localStorage.getItem(CLE_RECORD)) || 0;
   } catch {
     return 0;
   }
@@ -75,95 +115,99 @@ function lireRecord() {
 
 function ecrireRecord(valeur) {
   try {
-    localStorage.setItem("krillon.record", String(valeur));
+    localStorage.setItem(CLE_RECORD, String(valeur));
   } catch {}
 }
 
-// --- État de la partie ---
+function lirePlongee(jour) {
+  try {
+    const p = JSON.parse(localStorage.getItem(CLE_PLONGEE));
+    return p && p.jour === jour && Array.isArray(p.reponses) ? p.reponses : [];
+  } catch {
+    return [];
+  }
+}
+
+function sauverPlongee() {
+  try {
+    localStorage.setItem(CLE_PLONGEE, JSON.stringify({ jour: etat.jour, reponses: etat.reponses }));
+  } catch {}
+}
+
+// --- État de la plongée ---
 
 const etat = {
-  ordre: [], // indices des thèmes tirés
-  manche: 0,
-  profondeur: 0,
+  jour: dateDuJour(),
+  ordre: [], // indices des thèmes, dans l'ordre du jour
+  reponses: [], // { theme, mot, niveau, points } ; la dernière est la question en cours
+  enCours: false,
+  fin: 0, // horodatage de la fin du chrono
+  temps: DUREE,
   profondeurAffichee: 0,
-  essais: 0,
-  temps: 0,
-  dejaDits: new Set(),
-  historique: [], // { theme, mots: [{ affichage, niveau, metres }] }
   minuteur: null,
 };
 
 const $ = (id) => document.getElementById(id);
 
+function totalPoints() {
+  return etat.reponses.reduce((s, r) => s + r.points, 0);
+}
+
 function afficherEcran(id) {
   for (const e of document.querySelectorAll(".ecran")) e.hidden = e.id !== id;
 }
 
-function nouvellePartie() {
-  etat.ordre = melanger(THEMES.map((_, i) => i)).slice(0, MANCHES);
-  etat.manche = 0;
-  etat.profondeur = 0;
-  etat.historique = [];
+function commencer() {
+  if (etat.reponses.length >= QUESTIONS) return finPlongee();
   afficherEcran("jeu");
-  demarrerManche();
+  demarrerQuestion();
 }
 
-function demarrerManche() {
-  const indice = etat.ordre[etat.manche];
-  etat.essais = ESSAIS;
-  etat.temps = DUREE_MANCHE;
-  etat.dejaDits = new Set();
-  etat.historique.push({ theme: THEMES[indice].nom, mots: [] });
+function demarrerQuestion() {
+  const indice = etat.ordre[etat.reponses.length];
+  // La question est enregistrée dès son début : recharger la page la fait perdre.
+  etat.reponses.push({ theme: THEMES[indice].nom, mot: null, niveau: null, points: 0 });
+  sauverPlongee();
 
-  $("manche").textContent = `Manche ${etat.manche + 1} / ${MANCHES}`;
+  etat.enCours = true;
+  etat.fin = Date.now() + DUREE * 1000;
+  etat.temps = DUREE;
+
+  $("manche").textContent = `Question ${etat.reponses.length} / ${QUESTIONS}`;
   $("theme").textContent = THEMES[indice].nom;
   $("resultats").innerHTML = "";
   $("message").textContent = "";
+  $("suivant").hidden = true;
   $("saisie").disabled = false;
   $("saisie").value = "";
   $("saisie").focus();
-  majEssais();
+  majProgression();
   majOxygene();
 
   clearInterval(etat.minuteur);
   etat.minuteur = setInterval(() => {
-    etat.temps = Math.max(0, etat.temps - 0.1);
+    etat.temps = Math.max(0, (etat.fin - Date.now()) / 1000);
     majOxygene();
-    if (etat.temps <= 0) finManche("Plus d'oxygène !");
+    if (etat.temps <= 0) terminerQuestion(null);
   }, 100);
 }
 
 function proposer(saisie) {
-  if (!saisie.trim() || etat.essais <= 0) return;
-  const dico = DICTIONNAIRES[etat.ordre[etat.manche]];
+  if (!etat.enCours || !saisie.trim()) return;
+  const dico = DICTIONNAIRES[etat.ordre[etat.reponses.length - 1]];
   const trouve = chercher(dico, saisie);
 
   if (!trouve) {
-    etat.temps = Math.max(0, etat.temps - PENALITE);
-    signaler(`« ${saisie.trim()} » n'est pas reconnu (−${PENALITE} s d'oxygène)`, true);
-    majOxygene();
-    return;
-  }
-  if (etat.dejaDits.has(trouve.affichage)) {
-    signaler(`Vous avez déjà proposé « ${trouve.affichage} »`, true);
+    // Pas de pénalité : seul le temps perdu compte.
+    signaler(`« ${saisie.trim()} » n'est pas reconnu. Essayez autre chose !`, true);
     return;
   }
 
-  etat.dejaDits.add(trouve.affichage);
-  const metres = METRES[trouve.niveau];
-  etat.profondeur += metres;
-  etat.essais--;
-  etat.historique.at(-1).mots.push({ ...trouve, metres });
-
-  const li = document.createElement("li");
-  li.className = `rarete-${trouve.niveau}`;
-  li.innerHTML = `<span class="mot"></span><span class="etiquette">${RARETE[trouve.niveau]}</span><span class="gain">+${metres} m</span>`;
-  li.querySelector(".mot").textContent = trouve.affichage;
-  $("resultats").appendChild(li);
-  signaler("");
-  majEssais();
-
-  if (etat.essais === 0) finManche("Manche terminée !");
+  const reponse = etat.reponses.at(-1);
+  reponse.mot = trouve.affichage;
+  reponse.niveau = trouve.niveau;
+  reponse.points = POINTS[trouve.niveau];
+  terminerQuestion(trouve);
 }
 
 function signaler(texte, erreur = false) {
@@ -172,66 +216,133 @@ function signaler(texte, erreur = false) {
   m.classList.toggle("erreur", erreur);
 }
 
-function finManche(raison) {
+function terminerQuestion(trouve) {
   clearInterval(etat.minuteur);
+  etat.enCours = false;
+  sauverPlongee();
   $("saisie").disabled = true;
 
-  // Suggère quelques mots légendaires non trouvés, pour la culture.
-  const theme = THEMES[etat.ordre[etat.manche]];
-  const legendaires = theme.niveaux[4]
+  const liste = $("resultats");
+  liste.innerHTML = "";
+  if (trouve) {
+    const points = POINTS[trouve.niveau];
+    const li = document.createElement("li");
+    li.className = `rarete-${trouve.niveau}`;
+    li.innerHTML = `<span class="mot"></span><span class="etiquette">${RARETE[trouve.niveau]}</span><span class="gain">+${points} pts</span>`;
+    li.querySelector(".mot").textContent = trouve.affichage;
+    liste.appendChild(li);
+  }
+
+  // Suggère quelques réponses très rares, pour la culture.
+  const legendaires = THEMES[etat.ordre[etat.reponses.length - 1]].niveaux[4]
     .split(",")
     .map((e) => e.split("|")[0].trim())
-    .filter((m) => m && !etat.dejaDits.has(m));
+    .filter((m) => m && m !== etat.reponses.at(-1).mot);
   const idees = melanger(legendaires).slice(0, 3).join(", ");
-  signaler(`${raison} Des mots légendaires possibles : ${idees}.`);
+  const debut = trouve ? "" : "Temps écoulé ! Aucun point. ";
+  const suite = !trouve || trouve.niveau < POINTS.length - 1 ? `Des réponses plus rares : ${idees}.` : "";
+  signaler(debut + suite);
 
-  const derniere = etat.manche === MANCHES - 1;
-  $("suivant").textContent = derniere ? "Remonter à la surface" : "Plonger plus profond";
+  $("suivant").textContent =
+    etat.reponses.length >= QUESTIONS ? "Voir ma profondeur" : "Question suivante";
   $("suivant").hidden = false;
   $("suivant").focus();
+  majProgression();
 }
 
-function mancheSuivante() {
+function questionSuivante() {
   $("suivant").hidden = true;
-  etat.manche++;
-  if (etat.manche >= MANCHES) finPartie();
-  else demarrerManche();
+  if (etat.reponses.length >= QUESTIONS) finPlongee();
+  else demarrerQuestion();
 }
 
-function finPartie() {
-  const record = lireRecord();
-  const nouveauRecord = etat.profondeur > record;
-  if (nouveauRecord) ecrireRecord(etat.profondeur);
+let compteARebours = null;
 
-  const zone = zonePour(etat.profondeur);
-  $("final-profondeur").textContent = `${etat.profondeur.toLocaleString("fr-FR")} m`;
+function finPlongee() {
+  const total = totalPoints();
+  const profondeur = total * METRES_PAR_POINT;
+  const record = lireRecord();
+  const nouveauRecord = profondeur > record;
+  if (nouveauRecord) ecrireRecord(profondeur);
+
+  const zone = zonePour(profondeur);
+  $("final-profondeur").textContent = `${profondeur.toLocaleString("fr-FR")} m`;
+  $("final-points").textContent = `${total} / ${MAX_POINTS} points`;
   $("final-zone").textContent = `${zone.nom} — ${zone.desc}`;
   $("final-record").textContent = nouveauRecord
-    ? "Nouveau record !"
-    : `Record : ${record.toLocaleString("fr-FR")} m`;
+    ? "Nouvelle meilleure plongée !"
+    : `Meilleure plongée : ${record.toLocaleString("fr-FR")} m`;
 
   const recap = $("recap");
   recap.innerHTML = "";
-  for (const { theme, mots } of etat.historique) {
+  for (const r of etat.reponses) {
     const li = document.createElement("li");
-    const total = mots.reduce((s, m) => s + m.metres, 0);
-    li.innerHTML = `<strong></strong> <span class="gain">+${total} m</span><div class="mots"></div>`;
-    li.querySelector("strong").textContent = theme;
-    li.querySelector(".mots").textContent =
-      mots.map((m) => `${m.affichage} (${RARETE[m.niveau].toLowerCase()})`).join(" · ") || "aucun mot";
+    li.innerHTML = `<strong></strong> <span class="gain"></span><div class="mots"></div>`;
+    li.querySelector("strong").textContent = r.theme;
+    li.querySelector(".gain").textContent = `+${r.points} pts`;
+    li.querySelector(".mots").textContent = r.mot
+      ? `${r.mot} (${RARETE[r.niveau].toLowerCase()})`
+      : "pas de réponse";
     recap.appendChild(li);
   }
+
   afficherEcran("fin");
-  $("rejouer").focus();
+  demarrerCompteARebours();
 }
 
-function majEssais() {
-  $("essais").textContent = "🦐".repeat(etat.essais) + "·".repeat(ESSAIS - etat.essais);
-  $("essais").setAttribute("aria-label", `${etat.essais} mots restants`);
+function texteDePartage() {
+  const carres = etat.reponses.map((r) => (r.mot ? CARRES[r.niveau] : CARRE_RATE)).join("");
+  const [a, m, j] = etat.jour.split("-");
+  const total = totalPoints();
+  const lien = location.protocol.startsWith("http") ? `\n${location.origin}${location.pathname}` : "";
+  return `Abysse ${j}/${m}/${a}\n${total}/${MAX_POINTS} pts · ${(total * METRES_PAR_POINT).toLocaleString("fr-FR")} m\n${carres}${lien}`;
+}
+
+async function partager() {
+  const bouton = $("partager");
+  try {
+    await navigator.clipboard.writeText(texteDePartage());
+    bouton.textContent = "Copié !";
+  } catch {
+    bouton.textContent = "Copie impossible";
+  }
+  setTimeout(() => (bouton.textContent = "Partager mon score"), 2000);
+}
+
+function demarrerCompteARebours() {
+  clearInterval(compteARebours);
+  const maj = () => {
+    const demain = new Date();
+    demain.setHours(24, 0, 0, 0);
+    const reste = Math.max(0, Math.round((demain - Date.now()) / 1000));
+    if (reste <= 0 || dateDuJour() !== etat.jour) return location.reload();
+    const deux = (n) => String(n).padStart(2, "0");
+    $("prochaine").textContent =
+      `Prochaine plongée dans ${deux(Math.floor(reste / 3600))}:${deux(Math.floor((reste % 3600) / 60))}:${deux(reste % 60)}`;
+  };
+  maj();
+  compteARebours = setInterval(maj, 1000);
+}
+
+function majProgression() {
+  const conteneur = $("progression");
+  conteneur.innerHTML = "";
+  for (let i = 0; i < QUESTIONS; i++) {
+    const p = document.createElement("span");
+    p.className = "pastille";
+    const r = etat.reponses[i];
+    if (r && (i < etat.reponses.length - 1 || !etat.enCours)) {
+      p.classList.add(r.mot ? `rarete-${r.niveau}` : "rate", "faite");
+    } else if (i === etat.reponses.length - 1) {
+      p.classList.add("actuelle");
+    }
+    conteneur.appendChild(p);
+  }
+  conteneur.setAttribute("aria-label", `Question ${Math.min(etat.reponses.length, QUESTIONS)} sur ${QUESTIONS}`);
 }
 
 function majOxygene() {
-  const ratio = etat.temps / DUREE_MANCHE;
+  const ratio = etat.temps / DUREE;
   $("oxygene-barre").style.width = `${ratio * 100}%`;
   $("oxygene-barre").classList.toggle("bas", ratio < 0.25);
   $("oxygene-texte").textContent = `${Math.ceil(etat.temps)} s`;
@@ -249,7 +360,7 @@ function couleurEau(profondeur) {
 }
 
 function boucleRendu() {
-  const cible = etat.profondeur;
+  const cible = totalPoints() * METRES_PAR_POINT;
   etat.profondeurAffichee += (cible - etat.profondeurAffichee) * 0.08;
   if (Math.abs(cible - etat.profondeurAffichee) < 0.5) etat.profondeurAffichee = cible;
   const p = etat.profondeurAffichee;
@@ -257,25 +368,32 @@ function boucleRendu() {
   document.body.style.backgroundColor = couleurEau(p);
   $("profondeur").textContent = `${Math.round(p).toLocaleString("fr-FR")} m`;
   $("zone").textContent = zonePour(p).nom;
-  const ratio = Math.min(1, p / 11000);
-  $("krill").style.top = `${ratio * 100}%`;
+  $("krill").style.top = `${Math.min(1, p / MAX_PROFONDEUR) * 100}%`;
   requestAnimationFrame(boucleRendu);
 }
 
 // --- Branchements ---
 
 document.addEventListener("DOMContentLoaded", () => {
+  etat.ordre = ordreDuJour(etat.jour);
+  etat.reponses = lirePlongee(etat.jour).slice(0, QUESTIONS);
+
+  const deja = etat.reponses.length;
+  if (deja >= QUESTIONS) {
+    $("plonger").textContent = "Voir mon résultat";
+    $("etat-accueil").textContent = "Vous avez déjà plongé aujourd'hui. Revenez demain !";
+  } else if (deja > 0) {
+    $("plonger").textContent = "Reprendre la plongée";
+    $("etat-accueil").textContent = "La question en cours au moment de quitter la page a été perdue.";
+  }
   const record = lireRecord();
   $("record-accueil").textContent = record
-    ? `Votre record : ${record.toLocaleString("fr-FR")} m`
+    ? `Meilleure plongée : ${record.toLocaleString("fr-FR")} m`
     : "";
 
-  $("plonger").addEventListener("click", nouvellePartie);
-  $("rejouer").addEventListener("click", () => {
-    etat.profondeur = 0;
-    nouvellePartie();
-  });
-  $("suivant").addEventListener("click", mancheSuivante);
+  $("plonger").addEventListener("click", commencer);
+  $("suivant").addEventListener("click", questionSuivante);
+  $("partager").addEventListener("click", partager);
   $("formulaire").addEventListener("submit", (e) => {
     e.preventDefault();
     proposer($("saisie").value);
@@ -287,10 +405,11 @@ document.addEventListener("DOMContentLoaded", () => {
   for (const z of ZONES.slice(1)) {
     const g = document.createElement("div");
     g.className = "graduation";
-    g.style.top = `${(z.min / 11000) * 100}%`;
+    g.style.top = `${(z.min / MAX_PROFONDEUR) * 100}%`;
     g.textContent = `${z.min.toLocaleString("fr-FR")} m`;
     graduations.appendChild(g);
   }
 
+  majProgression();
   requestAnimationFrame(boucleRendu);
 });

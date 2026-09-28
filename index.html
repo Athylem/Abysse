@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Krillon</title>
+  <title>Abysse</title>
   <link rel="stylesheet" href="style.css">
   <script src="words.js" defer></script>
   <script src="game.js" defer></script>
@@ -13,15 +13,17 @@
 
   <main>
     <section id="accueil" class="ecran">
-      <h1>Krillon</h1>
-      <p class="accroche">Soyez original. Plongez dans les abysses.</p>
+      <h1>Abysse</h1>
+      <p class="accroche">Sept questions par jour, les mêmes pour tout le monde.<br>Les réponses rares vous font couler plus profond.</p>
       <ol class="regles">
         <li>Un thème s'affiche : « Un fruit », « Un pays »…</li>
-        <li>Proposez <strong>3 mots</strong> avant d'épuiser votre oxygène (30 s).</li>
-        <li>Plus un mot est <strong>original</strong>, plus vous descendez profond.</li>
-        <li>Un mot inconnu vous coûte 2 s d'oxygène.</li>
+        <li>Tapez <strong>une seule réponse</strong> en 20 secondes.</li>
+        <li>Plus votre réponse est <strong>rare</strong>, plus vous descendez : les évidentes comptent à peine.</li>
+        <li>Une réponse refusée ne coûte aucun point, seulement du temps.</li>
+        <li>Une seule plongée par jour : ne rechargez pas la page en cours de route !</li>
       </ol>
       <button id="plonger" class="bouton">Plonger</button>
+      <p id="etat-accueil" class="discret"></p>
       <p id="record-accueil" class="discret"></p>
     </section>
 
@@ -30,15 +32,15 @@
         <div class="panneau">
           <div class="entete">
             <span id="manche"></span>
-            <span id="essais"></span>
+            <span id="progression"></span>
           </div>
           <h2 id="theme"></h2>
-          <div class="oxygene" aria-label="Oxygène restant">
+          <div class="oxygene" aria-label="Temps restant">
             <div id="oxygene-barre"></div>
             <span id="oxygene-texte"></span>
           </div>
           <form id="formulaire" autocomplete="off">
-            <input id="saisie" type="text" placeholder="Votre mot…" aria-label="Votre mot" autocapitalize="off" spellcheck="false">
+            <input id="saisie" type="text" placeholder="Votre réponse…" aria-label="Votre réponse" autocapitalize="off" spellcheck="false">
             <button class="bouton" type="submit">OK</button>
           </form>
           <p id="message" role="status"></p>
@@ -60,10 +62,12 @@
     <section id="fin" class="ecran" hidden>
       <p class="discret">Vous avez atteint</p>
       <div id="final-profondeur" class="grand"></div>
+      <p id="final-points"></p>
       <p id="final-zone"></p>
       <p id="final-record" class="discret"></p>
       <ul id="recap"></ul>
-      <button id="rejouer" class="bouton">Replonger</button>
+      <button id="partager" class="bouton">Partager mon score</button>
+      <p id="prochaine" class="discret"></p>
     </section>
   </main>
 </body>
