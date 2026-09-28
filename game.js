@@ -1,7 +1,9 @@
 // Abysse — la plongée quotidienne : 7 questions, les mêmes pour tout le monde.
 // Une seule réponse par question : plus elle est rare, plus on descend profond.
 
-const QUESTIONS = 7;
+// Difficulté visée pour chaque question : la plongée devient de plus en plus dure.
+const PALIERS = [1, 1, 2, 2, 3, 3, 4];
+const QUESTIONS = PALIERS.length;
 const DUREE = 20; // secondes pour répondre à chaque question
 const POINTS = [4, 12, 32, 64, 100]; // points par niveau de rareté
 const METRES_PAR_POINT = 10;
@@ -98,9 +100,19 @@ function dateDuJour() {
   return `${d.getFullYear()}-${deux(d.getMonth() + 1)}-${deux(d.getDate())}`;
 }
 
+// Pour chaque question, tire (avec la graine du jour) un thème restant dont la
+// difficulté est la plus proche du palier visé.
 function ordreDuJour(jour) {
-  const indices = THEMES.map((_, i) => i);
-  return melanger(indices, alea(hasher(`abysse-${jour}`))).slice(0, QUESTIONS);
+  const hasard = alea(hasher(`abysse-${jour}`));
+  const restants = THEMES.map((_, i) => i);
+  return PALIERS.map((palier) => {
+    const ecart = (i) => Math.abs(THEMES[i].difficulte - palier);
+    const meilleur = Math.min(...restants.map(ecart));
+    const candidats = restants.filter((i) => ecart(i) === meilleur);
+    const choix = candidats[Math.floor(hasard() * candidats.length)];
+    restants.splice(restants.indexOf(choix), 1);
+    return choix;
+  });
 }
 
 // --- Sauvegarde locale ---
@@ -160,7 +172,18 @@ function afficherEcran(id) {
 function commencer() {
   if (etat.reponses.length >= QUESTIONS) return finPlongee();
   afficherEcran("jeu");
+  $("resultats").innerHTML = "";
+  $("message").textContent = "";
   demarrerQuestion();
+
+  // Le chrono ne s'arrête jamais : il repart à chaque question, sans pause.
+  clearInterval(etat.minuteur);
+  etat.minuteur = setInterval(() => {
+    if (!etat.enCours) return;
+    etat.temps = Math.max(0, (etat.fin - Date.now()) / 1000);
+    majOxygene();
+    if (etat.temps <= 0) terminerQuestion(null);
+  }, 100);
 }
 
 function demarrerQuestion() {
@@ -173,23 +196,14 @@ function demarrerQuestion() {
   etat.fin = Date.now() + DUREE * 1000;
   etat.temps = DUREE;
 
-  $("manche").textContent = `Question ${etat.reponses.length} / ${QUESTIONS}`;
+  const etoiles = "★".repeat(THEMES[indice].difficulte) + "☆".repeat(PALIERS.at(-1) - THEMES[indice].difficulte);
+  $("manche").textContent = `Question ${etat.reponses.length} / ${QUESTIONS} · ${etoiles}`;
+  $("manche").setAttribute("aria-label", `Question ${etat.reponses.length} sur ${QUESTIONS}, difficulté ${THEMES[indice].difficulte} sur ${PALIERS.at(-1)}`);
   $("theme").textContent = THEMES[indice].nom;
-  $("resultats").innerHTML = "";
-  $("message").textContent = "";
-  $("suivant").hidden = true;
-  $("saisie").disabled = false;
   $("saisie").value = "";
   $("saisie").focus();
   majProgression();
   majOxygene();
-
-  clearInterval(etat.minuteur);
-  etat.minuteur = setInterval(() => {
-    etat.temps = Math.max(0, (etat.fin - Date.now()) / 1000);
-    majOxygene();
-    if (etat.temps <= 0) terminerQuestion(null);
-  }, 100);
 }
 
 function proposer(saisie) {
@@ -216,44 +230,28 @@ function signaler(texte, erreur = false) {
   m.classList.toggle("erreur", erreur);
 }
 
+// Clôt la question en cours et enchaîne aussitôt sur la suivante (ou la fin).
 function terminerQuestion(trouve) {
-  clearInterval(etat.minuteur);
   etat.enCours = false;
   sauverPlongee();
-  $("saisie").disabled = true;
 
+  if (etat.reponses.length >= QUESTIONS) {
+    clearInterval(etat.minuteur);
+    return finPlongee();
+  }
+
+  // Rappel de la réponse précédente, affiché pendant que la question suivante tourne.
   const liste = $("resultats");
   liste.innerHTML = "";
   if (trouve) {
-    const points = POINTS[trouve.niveau];
     const li = document.createElement("li");
     li.className = `rarete-${trouve.niveau}`;
-    li.innerHTML = `<span class="mot"></span><span class="etiquette">${RARETE[trouve.niveau]}</span><span class="gain">+${points} pts</span>`;
+    li.innerHTML = `<span class="mot"></span><span class="etiquette">${RARETE[trouve.niveau]}</span><span class="gain">+${POINTS[trouve.niveau]} pts</span>`;
     li.querySelector(".mot").textContent = trouve.affichage;
     liste.appendChild(li);
   }
-
-  // Suggère quelques réponses très rares, pour la culture.
-  const legendaires = THEMES[etat.ordre[etat.reponses.length - 1]].niveaux[4]
-    .split(",")
-    .map((e) => e.split("|")[0].trim())
-    .filter((m) => m && m !== etat.reponses.at(-1).mot);
-  const idees = melanger(legendaires).slice(0, 3).join(", ");
-  const debut = trouve ? "" : "Temps écoulé ! Aucun point. ";
-  const suite = !trouve || trouve.niveau < POINTS.length - 1 ? `Des réponses plus rares : ${idees}.` : "";
-  signaler(debut + suite);
-
-  $("suivant").textContent =
-    etat.reponses.length >= QUESTIONS ? "Voir ma profondeur" : "Question suivante";
-  $("suivant").hidden = false;
-  $("suivant").focus();
-  majProgression();
-}
-
-function questionSuivante() {
-  $("suivant").hidden = true;
-  if (etat.reponses.length >= QUESTIONS) finPlongee();
-  else demarrerQuestion();
+  signaler(trouve ? "" : "Temps écoulé ! Aucun point.");
+  demarrerQuestion();
 }
 
 let compteARebours = null;
@@ -392,7 +390,6 @@ document.addEventListener("DOMContentLoaded", () => {
     : "";
 
   $("plonger").addEventListener("click", commencer);
-  $("suivant").addEventListener("click", questionSuivante);
   $("partager").addEventListener("click", partager);
   $("formulaire").addEventListener("submit", (e) => {
     e.preventDefault();

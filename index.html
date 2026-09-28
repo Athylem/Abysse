@@ -17,7 +17,7 @@
       <p class="accroche">Sept questions par jour, les mêmes pour tout le monde.<br>Les réponses rares vous font couler plus profond.</p>
       <ol class="regles">
         <li>Un thème s'affiche : « Un fruit », « Un pays »…</li>
-        <li>Tapez <strong>une seule réponse</strong> en 20 secondes.</li>
+        <li>Tapez <strong>une seule réponse</strong> en 20 secondes : dès qu'elle est validée, la question suivante s'enchaîne, le chrono ne s'arrête jamais.</li>
         <li>Plus votre réponse est <strong>rare</strong>, plus vous descendez : les évidentes comptent à peine.</li>
         <li>Une réponse refusée ne coûte aucun point, seulement du temps.</li>
         <li>Une seule plongée par jour : ne rechargez pas la page en cours de route !</li>
@@ -44,8 +44,7 @@
             <button class="bouton" type="submit">OK</button>
           </form>
           <p id="message" role="status"></p>
-          <ul id="resultats"></ul>
-          <button id="suivant" class="bouton" hidden></button>
+          <ul id="resultats" aria-label="Réponse précédente"></ul>
         </div>
 
         <aside class="jauge" aria-label="Profondeur">
