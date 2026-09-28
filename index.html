@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Krillon</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="words.js" defer></script>
+  <script src="game.js" defer></script>
+</head>
+<body>
+  <div class="bulles" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+
+  <main>
+    <section id="accueil" class="ecran">
+      <h1>Krillon</h1>
+      <p class="accroche">Soyez original. Plongez dans les abysses.</p>
+      <ol class="regles">
+        <li>Un thème s'affiche : « Un fruit », « Un pays »…</li>
+        <li>Proposez <strong>3 mots</strong> avant d'épuiser votre oxygène (30 s).</li>
+        <li>Plus un mot est <strong>original</strong>, plus vous descendez profond.</li>
+        <li>Un mot inconnu vous coûte 2 s d'oxygène.</li>
+      </ol>
+      <button id="plonger" class="bouton">Plonger</button>
+      <p id="record-accueil" class="discret"></p>
+    </section>
+
+    <section id="jeu" class="ecran" hidden>
+      <div class="plateau">
+        <div class="panneau">
+          <div class="entete">
+            <span id="manche"></span>
+            <span id="essais"></span>
+          </div>
+          <h2 id="theme"></h2>
+          <div class="oxygene" aria-label="Oxygène restant">
+            <div id="oxygene-barre"></div>
+            <span id="oxygene-texte"></span>
+          </div>
+          <form id="formulaire" autocomplete="off">
+            <input id="saisie" type="text" placeholder="Votre mot…" aria-label="Votre mot" autocapitalize="off" spellcheck="false">
+            <button class="bouton" type="submit">OK</button>
+          </form>
+          <p id="message" role="status"></p>
+          <ul id="resultats"></ul>
+          <button id="suivant" class="bouton" hidden></button>
+        </div>
+
+        <aside class="jauge" aria-label="Profondeur">
+          <div id="profondeur">0 m</div>
+          <div id="zone" class="discret"></div>
+          <div class="colonne">
+            <div id="graduations"></div>
+            <div id="krill">🦐</div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="fin" class="ecran" hidden>
+      <p class="discret">Vous avez atteint</p>
+      <div id="final-profondeur" class="grand"></div>
+      <p id="final-zone"></p>
+      <p id="final-record" class="discret"></p>
+      <ul id="recap"></ul>
+      <button id="rejouer" class="bouton">Replonger</button>
+    </section>
+  </main>
+</body>
+</html>
